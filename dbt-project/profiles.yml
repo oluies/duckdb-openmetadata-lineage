@@ -1,0 +1,26 @@
+trading_calendar:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # The DuckDB file is only the transformation engine: every model and seed is
+      # written into the attached SQL Server database `refdata` (see dbt_project.yml).
+      path: "{{ env_var('DEMO_ROOT', '../..') }}/out/trading_calendar.duckdb"
+      threads: 4
+      extensions:
+        - httpfs
+        - azure
+        - name: mssql
+          repo: community
+      secrets:
+        - type: azure
+          provider: config
+          account_name: azureopendatastorage
+      settings:
+        azure_transport_option_type: 'curl'
+        # macOS system roots; a corporate proxy CA bundle via DEMO_CA_BUNDLE
+        ca_cert_file: "{{ env_var('DEMO_CA_BUNDLE', '/etc/ssl/cert.pem') }}"
+      attach:
+        - path: "Server=localhost,{{ env_var('MSSQL_PORT', '11433') }};Database=refdata;User Id=sa;Password={{ env_var('MSSQL_SA_PASSWORD') }};TrustServerCertificate=true"  # trufflehog:ignore (password from env)
+          type: mssql
+          alias: refdata

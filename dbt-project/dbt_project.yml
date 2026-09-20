@@ -1,0 +1,58 @@
+# Vendored from github.com/oluies/dbt-duckdb-trading-calendar (2e2728e), trimmed for the talk:
+# no Elementary, SQL Server on localhost:11433 (Apple container), database `refdata`,
+# schema `calendar`, staging kept in DuckDB, and the holiday source switchable between
+# Azure and a local cache.
+name: 'trading_calendar'
+version: '1.0.0'
+config-version: 2
+profile: 'trading_calendar'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  holiday_country_codes: ['SE', 'NO', 'DK', 'FI', 'GB', 'US']
+  calendar_start_date: '2015-01-01'
+  calendar_end_date:   '2036-01-01'
+
+# Like a production loader pod: staging lives in the local DuckDB file (catalog
+# `trading_calendar`, gone when the pod is), the marts go to SQL Server for Power BI.
+models:
+  trading_calendar:
+    +materialized: table
+    staging:
+      +database: trading_calendar
+      +schema: staging
+      stg_date_spine:
+        +materialized: ephemeral
+    marts:
+      +database: refdata
+      +schema: calendar
+
+seeds:
+  trading_calendar:
+    +database: refdata
+    +schema: calendar
+    dim_country:
+      +column_types:
+        country_code: varchar(2)
+        country_name: varchar(100)
+    exchange_holidays:
+      +column_types:
+        calendar_date: date
+        exchange_code: varchar(8)
+        exchange_name: varchar(100)
+        country_code: varchar(2)
+        holiday_name: varchar(200)
+    expected_week_numbers:
+      +column_types:
+        date_day: date
+        iso_week_number: integer
+        iso_year: integer
+        iso_year_week: varchar(8)
+        us_week_number: integer
+        note: varchar(100)

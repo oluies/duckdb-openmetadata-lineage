@@ -1,0 +1,277 @@
+version: 2
+
+models:
+
+  - name: stg_public_holidays
+    description: >
+      Filtered, snake-cased view of the Azure Open Datasets "Public Holidays"
+      parquet feed (1970-2099 snapshot, CC BY-SA 3.0).
+    columns:
+      - name: country_region_code
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: holiday_date
+        tests:
+          - not_null
+
+  - name: dim_date
+    description: >
+      Country-agnostic calendar dimension, one row per day from 2015-01-01
+      through 2035-12-31. No holiday flags -- use fct_holiday_calendar.
+    columns:
+      - name: date_key
+        description: Integer surrogate key YYYYMMDD.
+        tests:
+          - unique
+          - not_null
+      - name: date_day
+        description: The calendar date.
+        tests:
+          - unique
+          - not_null
+      - name: iso_day_of_week
+        description: 1=Monday..7=Sunday, independent of SET DATEFIRST.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, 6, 7]
+              quote: false
+      - name: iso_week_number
+        description: ISO 8601 week number 1..53.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 1 and iso_week_number <= 53"
+      - name: iso_year
+        description: ISO 8601 week-year. Differs from year_number around year boundaries (e.g. 2025-12-29 -> iso_year=2026).
+        tests:
+          - not_null
+      - name: iso_year_week
+        description: ISO 8601 year-week text key like '2026-W01'.
+        tests:
+          - not_null
+      - name: us_week_number
+        description: >
+          US/Sunday-start week number (strftime %U), 0..53. Weeks start
+          Sunday; days before the first Sunday of the year are week 0.
+          Unlike ISO, US weeks do not cross the year boundary, so the
+          calendar year_number is the matching week-year.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0 and us_week_number <= 53"
+      - name: week_of_month
+        description: 1..5 within the calendar month (ceil(day_of_month/7)).
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
+      # Cycle-position flags -- the start/end boundary of each calendar
+      # cycle. Genuine signals (billing, reporting, settlement effects),
+      # not redundant expansions of the integer columns.
+      - name: is_month_start
+        description: True on the first calendar day of the month.
+        tests:
+          - not_null
+      - name: is_month_end
+        description: True on the last calendar day of the month.
+        tests:
+          - not_null
+      - name: is_quarter_start
+        description: True on the first calendar day of the quarter (Jan/Apr/Jul/Oct 1).
+        tests:
+          - not_null
+      - name: is_quarter_end
+        description: True on the last calendar day of the quarter.
+        tests:
+          - not_null
+      - name: is_year_start
+        description: True on Jan 1.
+        tests:
+          - not_null
+      - name: is_year_end
+        description: True on Dec 31.
+        tests:
+          - not_null
+      - name: days_since_year_start
+        description: Zero on Jan 1; ML distance feature.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0 and days_since_year_start <= 365"
+      - name: days_to_year_end
+        description: Zero on Dec 31; ML distance feature.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0 and days_to_year_end <= 365"
+
+      # Cyclical encodings -- each (sin, cos) PAIR maps an ordinal onto the
+      # unit circle at angle 2*pi*(n-1)/period, so cycle-adjacent values are
+      # adjacent in feature space (Dec->Jan, Sun->Mon = 1 step). Always use
+      # BOTH columns of a pair: a lone sin is ambiguous (two phases share a
+      # value); the pair is unique. Recover the ordinal with atan2(sin, cos);
+      # cyclic similarity between two rows is the dot product of their pairs.
+      # See README "Using the cyclical encodings" and dim_date.sql.
+      - name: dow_sin
+        description: >
+          Sine of the day-of-week cyclical encoding (iso_day_of_week 1..7,
+          period 7). Pair with dow_cos. Monday is angle 0 (dow_sin=0,
+          dow_cos=1). Range [-1, 1]. For ML/cyclic-distance use, not direct
+          human reading.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= -1 and dow_sin <= 1"
+      - name: dow_cos
+        description: Cosine of the day-of-week encoding (period 7). Pair with dow_sin. Range [-1, 1].
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= -1 and dow_cos <= 1"
+      - name: month_sin
+        description: >
+          Sine of the month-of-year cyclical encoding (month_number 1..12,
+          period 12). Pair with month_cos. January is angle 0. Range [-1, 1].
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= -1 and month_sin <= 1"
+      - name: month_cos
+        description: Cosine of the month-of-year encoding (period 12). Pair with month_sin. Range [-1, 1].
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= -1 and month_cos <= 1"
+      - name: doy_sin
+        description: >
+          Sine of the day-of-year cyclical encoding (day_of_year 1..366,
+          period 365.25 to average across the leap cycle). Pair with doy_cos.
+          Range [-1, 1].
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= -1 and doy_sin <= 1"
+      - name: doy_cos
+        description: Cosine of the day-of-year encoding (period 365.25). Pair with doy_sin. Range [-1, 1].
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= -1 and doy_cos <= 1"
+
+  - name: fct_holiday_calendar
+    description: >
+      Public holiday fact. Grain = (holiday_date, country_code).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - holiday_date
+            - country_code
+    columns:
+      - name: holiday_key
+        tests:
+          - unique
+          - not_null
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: country_code
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_country')
+              field: country_code
+      - name: holiday_date
+        tests:
+          - not_null
+      - name: holiday_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['public_holiday']
+
+  - name: fct_exchange_calendar
+    description: >
+      Trading-calendar fact. Grain = (calendar_date, exchange_code).
+      Lists exception days only (closures and unusual sessions); regular
+      trading days are implicit (absence of a row plus weekday from
+      dim_date).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - calendar_date
+            - exchange_code
+    columns:
+      - name: exchange_key
+        tests:
+          - unique
+          - not_null
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: exchange_code
+        tests:
+          - not_null
+      - name: country_code
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_country')
+              field: country_code
+      - name: is_trading_day
+        description: True if the exchange is open (possibly half-day). False = full closure.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: is_settlement_day
+        description: True if trades settle on this date.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+
+seeds:
+
+  - name: dim_country
+    description: >
+      Country dimension. ISO 3166-1 alpha-2 codes paired with display names.
+      Must contain at least every code in var('holiday_country_codes').
+    columns:
+      - name: country_code
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: "{{ var('holiday_country_codes') }}"
+      - name: country_name
+        tests:
+          - not_null
+
+  - name: exchange_holidays
+    description: >
+      Seed of exchange exception days. Edited by hand. country_code must
+      reference dim_country.
+    columns:
+      - name: calendar_date
+        tests:
+          - not_null
+      - name: exchange_code
+        tests:
+          - not_null
+      - name: country_code
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_country')
+              field: country_code

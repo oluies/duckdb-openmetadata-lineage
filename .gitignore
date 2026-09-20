@@ -1,0 +1,12 @@
+.venv/
+out/
+cache/
+*.duckdb
+*.duckdb.wal
+__pycache__/
+dbt-project/target/
+dbt-project/dbt_packages/
+dbt-project/logs/
+dbt-project/.user.yml
+lineage/om/docker-compose-postgres.yml
+.DS_Store

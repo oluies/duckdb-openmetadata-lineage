@@ -1,0 +1,4 @@
+title: Column lineage from dbt-duckdb to OpenMetadata
+description: Posting OpenLineage events so the DuckDB hops in a dbt run show up in the catalog, with column-level lineage from sqlglot.
+theme: jekyll-theme-primer
+show_downloads: false

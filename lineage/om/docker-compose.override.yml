@@ -1,0 +1,45 @@
+# Local overrides for the talk, on top of OpenMetadata's official 2.0.2 compose file
+# (docker-compose-postgres.yml, unchanged from the release). Own container names and host
+# ports, so it runs next to any other OpenMetadata already on this machine.
+#   docker compose -p duckdemo-om up -d --wait openmetadata-server     (scripts/om.sh up)
+services:
+  postgresql:
+    container_name: duckdemo_om_postgresql
+    ports: !override
+      - "15432:5432"
+    # A named volume instead of the official ./docker-volume bind mount: on Docker for Mac
+    # (Rancher Desktop here) the bind mount gets the wrong owner, initdb's first start fails
+    # with "data directory has wrong ownership", and openmetadata_db is never created.
+    volumes: !override
+      - om-postgres-data:/var/lib/postgresql/data
+  elasticsearch:
+    container_name: duckdemo_om_elasticsearch
+    # The official file restarts the server and postgresql but not elasticsearch, so a
+    # machine reboot (or a Docker restart) leaves OpenMetadata up but without search: the
+    # API answers, while the UI's search and Explore pages come back empty.
+    restart: always
+    ports: !override
+      - "19200:9200"
+  execute-migrate-all:
+    container_name: duckdemo_om_migrate
+  openmetadata-server:
+    container_name: duckdemo_om_server
+    ports: !override
+      - "8595:8585"
+      - "8596:8586"
+  ingestion:
+    container_name: duckdemo_om_ingestion
+    ports: !override
+      - "18080:8080"
+
+# The official file pins 172.16.240.0/24, which another OpenMetadata stack may already hold
+# ("Pool overlaps with other one on this address space").
+volumes:
+  om-postgres-data:
+
+networks:
+  app_net:
+    ipam: !override
+      driver: default
+      config:
+        - subnet: "172.16.244.0/24"

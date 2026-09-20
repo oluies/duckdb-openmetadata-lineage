@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: azure_open_datasets
+    description: Azure Open Datasets "Public Holidays" (1970-2099 snapshot, CC BY-SA 3.0).
+    # dbt-duckdb reads an external source straight from its location. HOLIDAYS_PATH is set by
+    # dbt-project/01-dbt-build.sh: the local cache when it exists, otherwise the Azure blob.
+    # (env_var, not var: source properties are rendered without project vars.)
+    meta:
+      external_location: "{{ env_var('HOLIDAYS_PATH', 'azure://holidaydatacontainer/Processed/*.parquet') }}"
+    tables:
+      - name: public_holidays
+        columns:
+          - name: countryRegionCode
+          - name: countryOrRegion
+          - name: date
+          - name: holidayName
+          - name: normalizeHolidayName
+          - name: isPaidTimeOff

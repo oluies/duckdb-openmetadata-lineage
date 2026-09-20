@@ -1,0 +1,15 @@
+[project]
+name = "duckdb-openmetadata-lineage"
+version = "0.1.0"
+description = "Column-level lineage from dbt-duckdb into OpenMetadata, over OpenLineage"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "duckdb==1.5.5",
+    "dbt-core==1.11.11",
+    "dbt-duckdb==1.10.1",
+    "sqlglot>=26",      # column-level lineage from the compiled SQL
+    "nats-py>=2.7",     # optional: publish the events to NATS JetStream instead
+]
+
+[tool.uv]
+package = false
