@@ -292,6 +292,17 @@ marks the three mart columns it feeds: the date key, the copy of itself, and `ex
 a surrogate key that `dbt_utils.generate_surrogate_key` hashes from `calendar_date` and
 `exchange_code`. sqlglot worked that out from the compiled SQL; nothing was declared by hand.
 
+![OpenMetadata lineage for dim_country: the seed in SQL Server, then stg_public_holidays in the duckdb_trading_calendar service, then fct_holiday_calendar back in SQL Server, with column edges into the mart.](img/om-lineage-duckdb-hop.png)
+
+The same graph one table further out, and the reason for all of this. `dim_country`, a dbt seed
+in SQL Server, feeds the staging table in the **DuckDB** catalog (`duckdb_trading_calendar`),
+which feeds the mart back in SQL Server. The hop in the middle is the one the dbt agent cannot
+resolve, and it is in the catalog only because the emitter created it.
+
+The two left-hand edges carry no column lineage, and that is correct: the seed and the Parquet
+source are used in a `WHERE … IN` filter and a file path, not selected into the staging table's
+columns. Column lineage starts where columns are actually projected, at the staging-to-mart hop.
+
 You can check the same thing through the API:
 
 ```bash
