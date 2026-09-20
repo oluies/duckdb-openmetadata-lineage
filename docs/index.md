@@ -314,6 +314,35 @@ with `--no-bootstrap`, and the SQL Server side of the bootstrap is already a
 no-op when those tables are ingested.
 
 
+## What's next: NATS instead of HTTP
+
+Posting straight to OpenMetadata couples the loader to the catalog: if OM is down or slow, the
+run either waits or loses its lineage. A broker in between fixes that, and OpenLineage already
+supports one — its clients can emit to Kafka or Kinesis, and OpenMetadata's OpenLineage connector
+consumes from exactly those two. We run NATS, not Kafka, so both ends of that path are missing.
+
+Two pieces of work follow from it, and both are in the open:
+
+- **A NATS transport for the OpenLineage clients.** Submitted:
+  [issue #4971](https://github.com/OpenLineage/OpenLineage/issues/4971) and
+  [PR #4972](https://github.com/OpenLineage/OpenLineage/pull/4972) add a `nats` transport to the
+  Python and Java clients, with JetStream and core NATS publishing, authentication and TLS,
+  message deduplication and TTLs. Both are open at the time of writing.
+- **A NATS source for OpenMetadata's OpenLineage connector.** Not submitted yet. The connector
+  reads from Kafka or Kinesis today; the aim is the same loop with a JetStream subject, so the
+  events this emitter produces are consumed by OM rather than pushed into it.
+
+This repository already has the publishing half as a small script
+(`lineage/publish_openlineage_nats.py`, `scripts/nats.sh`): the same events, put on a JetStream
+subject instead of POSTed. It is a placeholder for the transport above, not a substitute for it.
+
+There is a third thread. [Hugr](https://github.com/hugr-lab/hugr) (MIT) is a data-mesh service
+that answers GraphQL queries across PostgreSQL, MySQL, SQL Server, files, Iceberg and REST APIs,
+using DuckDB as its engine — the same engine, and several of the same sources, as the pipeline
+described here. A federation layer that already knows which sources a query touched is in a good
+position to emit OpenLineage events for it. Whether that fits together with the DuckDB work in
+this repository is something we are looking into, not something that exists.
+
 ## Authors
 
 - **Vladimir Gribanov** — [github.com/VGSML](https://github.com/VGSML) · [linkedin.com/in/vladimirgribanov](https://www.linkedin.com/in/vladimirgribanov/)
