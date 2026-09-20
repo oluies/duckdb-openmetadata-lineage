@@ -106,6 +106,9 @@ Env:
   OM_PIPELINE_SERVICE             pipeline service for the dbt jobs (default openlineage;
                                   must match defaultPipelineService in OM settings)
   OL_DRY_RUN=1                    print the batch instead of POSTing it
+  OL_ALLOW_EMPTY_COLUMN_LINEAGE=1 post even when every event lost its column lineage; OM
+                                  replaces an edge's details, so this DELETES the column
+                                  lineage it already has
 """
 
 from __future__ import annotations
@@ -915,7 +918,25 @@ def main() -> int:
         log("no events to emit")
         return 0
     edges = sum(len(e["inputs"]) for e in events)
-    log(f"{len(events)} events, {edges} input edges, {skipped} skipped nodes")
+    with_columns = sum("columnLineage" in e["outputs"][0].get("facets", {}) for e in events)
+    log(f"{len(events)} events, {edges} input edges, {with_columns} with column lineage, "
+        f"{skipped} skipped nodes")
+
+    # OM REPLACES an edge's lineageDetails with what the event carries; it does not merge.
+    # Measured on OM 2.0.2: posting the same graph without columnLineage facets took a table
+    # from 6 column edges to 0, while the table-level edges stayed. So a degraded run (no
+    # sqlglot, an unusable OM token, a manifest without compiled_code) would silently delete
+    # the column lineage already in the catalog. Refuse instead, unless the caller insists.
+    expected_columns = _sqlglot_lineage is not None and any(
+        n.get("compiled_code") for n in manifest["nodes"].values()
+        if n["resource_type"] == "model" and not is_ephemeral(n)
+    )
+    if expected_columns and not with_columns and not os.getenv("OL_ALLOW_EMPTY_COLUMN_LINEAGE"):
+        log("every event lost its column lineage (sqlglot installed and models have compiled "
+            "SQL, so this is a configuration problem - usually OM credentials the schema "
+            "lookup cannot use). Posting now would REPLACE the column lineage in OM with "
+            "nothing. Fix it, or set OL_ALLOW_EMPTY_COLUMN_LINEAGE=1 to post anyway.")
+        return 1
 
     body = json.dumps({"events": events}).encode()
     if os.getenv("OL_DRY_RUN"):

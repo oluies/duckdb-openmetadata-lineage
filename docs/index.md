@@ -300,6 +300,32 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | jq '[.nodes[].type] | group_by(.) | map({(.[0]): length}) | add'
 ```
 
+## Re-running is safe for the graph, not for the column detail
+
+Posting the same batch twice changes nothing, which is what you want from a loader that reruns.
+Measured on OpenMetadata 2.0.2, against one mart with three upstream edges and six column edges:
+
+| posted | table edges | column edges |
+|---|---|---|
+| the same batch again, same `eventTime` and `runId` | 3 | 6 |
+| the same graph with a new `eventTime` and `runId` | 3 | 6 |
+| the same graph with **no** `columnLineage` facet | 3 | **0** |
+| the full batch again | 3 | 6 |
+
+The timestamp has nothing to do with it. An edge is keyed on the two entities, so a second post
+overwrites the same edge instead of adding one, whatever the event says about when it ran.
+
+The third row is the one to watch. OM **replaces** an edge's `lineageDetails` with what the event
+carries, and does not merge them, so a batch without column lineage deletes the column lineage
+that was there while the table-level graph still looks healthy. That is exactly what a degraded
+run produces: sqlglot missing, or OM credentials the schema lookup cannot use. We found it by
+accident, with a mistyped token path, and watched six column edges become zero.
+
+The emitter now refuses to post in that case. If sqlglot is installed and the models have compiled
+SQL but not one event carries column lineage, it logs what is wrong and exits 1 rather than
+overwriting the catalog with less than it already has. `OL_ALLOW_EMPTY_COLUMN_LINEAGE=1` posts
+anyway, for the run where that really is the intent.
+
 ## Limits
 
 The column lineage is only as good as sqlglot's reading of the compiled SQL.
@@ -328,9 +354,11 @@ Two pieces of work follow from it, and both are in the open:
   [PR #4972](https://github.com/OpenLineage/OpenLineage/pull/4972) add a `nats` transport to the
   Python and Java clients, with JetStream and core NATS publishing, authentication and TLS,
   message deduplication and TTLs. Both are open at the time of writing.
-- **A NATS source for OpenMetadata's OpenLineage connector.** Not submitted yet. The connector
-  reads from Kafka or Kinesis today; the aim is the same loop with a JetStream subject, so the
-  events this emitter produces are consumed by OM rather than pushed into it.
+- **A NATS source for OpenMetadata's OpenLineage connector.** Also submitted:
+  [issue #33664](https://github.com/open-metadata/OpenMetadata/issues/33664) and draft
+  [PR #33665](https://github.com/open-metadata/OpenMetadata/pull/33665) add NATS JetStream as a
+  third `brokerConfig` option beside Kafka and Kinesis, so the events this emitter produces are
+  consumed by OM rather than pushed into it.
 
 This repository already has the publishing half as a small script
 (`lineage/publish_openlineage_nats.py`, `scripts/nats.sh`): the same events, put on a JetStream
