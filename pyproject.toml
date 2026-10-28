@@ -2,7 +2,7 @@
 name = "duckdb-openmetadata-lineage"
 version = "0.1.0"
 description = "Column-level lineage from dbt-duckdb into OpenMetadata, over OpenLineage"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.15,<3.16"
 dependencies = [
     "duckdb==1.5.6",
     "dbt-core==1.11.11",
