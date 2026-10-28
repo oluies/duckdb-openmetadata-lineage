@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Column-level lineage from dbt-duckdb into OpenMetadata, over OpenLineage"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "duckdb==1.5.6",
+    "duckdb==2.0.0",
     "dbt-core==1.11.11",
     "dbt-duckdb==1.10.1",
     "sqlglot>=26",      # column-level lineage from the compiled SQL
