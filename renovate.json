@@ -2,5 +2,50 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": [
+        "CAP. duckdb is held below 2.x because the 2.0.0 release publishes a",
+        "NARROWER wheel matrix than the 1.5.6 currently pinned:",
+        "",
+        "  duckdb 1.5.6  ->  cp310 cp311 cp312 cp313 cp314",
+        "  duckdb 2.0.0  ->  cp311 cp312",
+        "",
+        "requires-python here is >=3.12,<3.14, so it admits 3.13 -- and 2.0.0",
+        "has no cp313 wheel. Taking it would mean either dropping to",
+        ">=3.12,<3.13 or building duckdb from its sdist (a full C++ build).",
+        "Renovate's PR #7 offered it as an ordinary major; it is not.",
+        "",
+        "Curiously the 2.0.0.dev* prereleases DID ship cp313 and cp314, so the",
+        "stable 2.0.0 wheel matrix looks like an incomplete release build",
+        "rather than a deliberate drop. Worth re-checking on 2.0.1: if the",
+        "wheels come back, this cap can go.",
+        "",
+        "Note also that dbt-duckdb's `md` extra pins duckdb==1.5.5, so",
+        "enabling that extra would conflict with the 1.5.6 pin here."
+      ],
+      "matchPackageNames": ["duckdb"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": [
+        "CAP. requires-python cannot move to 3.15: NO duckdb release publishes",
+        "cp315 wheels -- not 1.5.6, not 2.0.0, not any of the 100+ versions on",
+        "PyPI. duckdb ships binary wheels per Python ABI and has no cp315 build",
+        "yet, and it has no pure-Python fallback.",
+        "",
+        "Renovate's PR #3 proposed >=3.12,<3.14 -> >=3.15,<3.16, which would",
+        "have left the project unresolvable except by compiling duckdb from",
+        "sdist. The same class of breakage as",
+        "oluies/tedsds-duckdb-postgres#14, where psycopg-binary had no cp315",
+        "wheels.",
+        "",
+        "Lift this once duckdb publishes cp315."
+      ],
+      "matchPackageNames": ["python"],
+      "enabled": false
+    }
   ]
 }
