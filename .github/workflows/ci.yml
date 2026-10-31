@@ -1,0 +1,86 @@
+name: CI
+
+# Vad den har workflowen finns for: att fanga att beroendetradet slutar ga att
+# losa ut. Repot hade ingen CI alls, och tva forslag hann komma som bada hade
+# varit tysta brott (se renovate.json):
+#
+#   * duckdb 2.0.0 publicerar hjul bara for cp311 och cp312, medan
+#     requires-python slapper in 3.13. Ett `uv sync` pa 3.13 hade fallit.
+#   * ingen duckdb-version alls har cp315-hjul, sa en flytt till Python 3.15
+#     hade gjort projektet olosbart.
+#
+# Darav matrisen: den provar VARJE Python som requires-python slapper in, inte
+# bara en. Det ar det som gor skillnad har, eftersom duckdb skickar binara hjul
+# per Python-ABI och inte har nagon rent-Python-fallback.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deps:
+    name: uv sync + dbt parse (py ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Hela intervallet i pyproject.toml: requires-python = ">=3.12,<3.14".
+        # Lagg till en version har nar intervallet vidgas, annars provas den inte.
+        python: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v7
+
+      # Exakt version med flit: astral-sh/setup-uv publicerar INGEN flytande
+      # major-tagg. Varken v10 eller v10.3 finns (bara v6 och tidigare hade
+      # det), sa @v10 ger
+      #   Unable to resolve action `astral-sh/setup-uv@v10`, unable to find version `v10`
+      # och jobbet faller redan i 'Set up job'. Renovate bumpar den har raden
+      # at oss, precis som i repots grannar.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      # --locked misslyckas om uv.lock inte stammer med pyproject.toml, sa
+      # bada bevakas: en hand-andrad pyproject utan omgenererad lasfil fastnar
+      # har, och ett beroende utan hjul for den har Pythonen likasa.
+      - name: uv sync --locked
+        run: uv sync --locked --python ${{ matrix.python }}
+
+      # dbt parse laser projektet, modellerna och macrona men oppnar INGEN
+      # anslutning, sa det behovs ingen SQL Server och inga DuckDB-utokningar.
+      #
+      # profiles.yml laser MSSQL_SA_PASSWORD via env_var() utan default, och
+      # env_var() utan default faller redan vid parse om variabeln saknas.
+      # Darfor satts ett dummy-varde: det anvands aldrig, eftersom ingen
+      # anslutning oppnas.
+      - name: dbt deps + parse
+        working-directory: dbt-project
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt-project
+          DEMO_ROOT: ${{ github.workspace }}
+          MSSQL_SA_PASSWORD: dummy-not-used-parse-only
+        run: |
+          uv run dbt deps
+          uv run dbt parse --no-partial-parse
+
+      # Syntaxkoll pa emittern. Att importera den krav OM/NATS-konfiguration,
+      # sa compileall ar sa langt vi kommer utan tjanster - men det fangar
+      # anda trasig syntax, vilket inget annat steg gor.
+      - name: compile lineage scripts
+        run: uv run python -m compileall -q lineage/
+
+# Medvetet INTE i CI: `make dbt` (dbt-project/01-dbt-build.sh).
+#
+# Varje modell och seed skrivs till en ATTACHad SQL Server-databas `refdata`
+# (se profiles.yml och dbt_project.yml), inte till DuckDB-filen - den ar bara
+# transformationsmotor. Ett riktigt bygge kraver darfor SQL Server pa
+# localhost:11433, community-utokningen mssql, och holiday-parquet fran
+# azureopendatastorage. Det ar korbart med en service-container, men det blir
+# ett langsamt och natverksberoende steg som skulle falla pa Azures uppetid
+# snarare an pa repots innehall. Portas det nagon gang hor det i en egen
+# workflow med `workflow_dispatch`, inte i grinden pa varje PR.
