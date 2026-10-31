@@ -35,7 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10
+      # Exakt version med flit: astral-sh/setup-uv publicerar INGEN flytande
+      # major-tagg. Varken v10 eller v10.3 finns (bara v6 och tidigare hade
+      # det), sa @v10 ger
+      #   Unable to resolve action `astral-sh/setup-uv@v10`, unable to find version `v10`
+      # och jobbet faller redan i 'Set up job'. Renovate bumpar den har raden
+      # at oss, precis som i repots grannar.
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
 
