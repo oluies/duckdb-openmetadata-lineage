@@ -41,7 +41,7 @@ jobs:
       #   Unable to resolve action `astral-sh/setup-uv@v10`, unable to find version `v10`
       # och jobbet faller redan i 'Set up job'. Renovate bumpar den har raden
       # at oss, precis som i repots grannar.
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
 
